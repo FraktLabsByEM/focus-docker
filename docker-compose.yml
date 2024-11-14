@@ -1,0 +1,18 @@
+services:
+  focus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: focus
+    privileged: true
+    ports:
+      - "80:80"       # Nginx and phpMyAdmin (HTTP)
+      - "1880:1880"   # Node Red
+      - "1883:1883"   # Mosquitto
+      - "3001:3000"   # Grafana
+      - "3307:3306"   # MySQL
+      - "8087:8086"   # InfluxDB
+    # volumes:
+      # - ./grafana:/var/lib/grafana
+      # - ./mysql:/var/lib/mysql
+      # - ./influxdb:/var/lib/influxdb

@@ -1,0 +1,163 @@
+# system repository update
+apt update
+
+# set console only
+DEBIAN_FRONTEND=noninteractive
+
+# install system tools
+apt install -y wget curl gnupg software-properties-common nano snapd snap
+
+# set up timezone
+apt install -y tzdata
+ln -fs /usr/share/zoneinfo/America/Bogota /etc/localtime
+dpkg-reconfigure -f noninteractive tzdata
+
+# add grafana repositories
+wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
+echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main" | tee /etc/apt/sources.list.d/grafana.list
+
+# install grafana
+apt update && apt install -y -f grafana
+# set up grafana to work with mysql
+sed -i 's/;type = sqlite3/;type = mysql/' /etc/grafana/grafana.ini
+sed -i 's/;user = root/;user = focus/' /etc/grafana/grafana.ini
+sed -i 's/;password =/;password = focus-user2024/' /etc/grafana/grafana.ini
+sed -i 's/;name = grafana/;name = focus/' /etc/grafana/grafana.ini
+
+# install mysql
+apt install -y -f mysql-server
+service mysql restart
+
+# mysql test only
+mysql -u root
+CREATE DATABASE focus;
+CREATE USER 'focus'@'%' IDENTIFIED BY 'focus-user2024';
+GRANT ALL PRIVILEGES ON focus.* TO 'focus'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EXIT;
+
+# give external access
+sed -i '0,/bind-address/s/bind-address.*/bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf
+
+# add mariadb repositories
+apt-key adv --fetch-keys 'https://mariadb.org/mariadb_release_signing_key.asc'
+add-apt-repository 'deb [arch=amd64,arm64,ppc64el] http://mirror.23media.com/mariadb/repo/10.6/ubuntu focal main'
+apt update
+
+# install mariadb and its dependencies
+apt install -y mariadb-server-10.6
+apt install -y -f mariadb-server:1:10.6.20+maria~ubu2004
+
+# change mariadb port
+sed -i '0,/bind-address/s/bind-address.*/bind-address = 0.0.0.0/' /etc/mysql/mariadb.conf.d/50-server.cnf
+sed -i '/bind-address/a port = 3308' /etc/mysql/mariadb.conf.d/50-server.cnf
+sed -i 's/^port\s*=.*/port = 3308/' /etc/mysql/mariadb.conf.d/50-server.cnf
+
+# restart mariadb service
+service mariadb-server restart
+
+####### IMPORTANT!!!!
+# Therefore the previous data directory will be renamed to /var/lib/mysql-8.0 and a new data directory will be initialized at /var/lib/mysql.
+
+# test only mariadb
+mariadb -u root
+CREATE DATABASE focus;
+CREATE USER 'focus'@'%' IDENTIFIED BY 'focus-user2024';
+GRANT ALL PRIVILEGES ON focus.* TO 'focus'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EXIT;
+
+# Use curl to download the influx binary.
+curl --location -O \
+https://download.influxdata.com/influxdb/releases/influxdb2-2.7.10_linux_amd64.tar.gz
+
+# Download and import influx key
+curl --silent --location https://repos.influxdata.com/influxdata-archive.key \
+| gpg --import - 2>&1 \
+| grep 'InfluxData Package Signing Key <support@influxdata.com>' \
+&&
+# Download and verify influx binary's signature file
+curl --silent --location "https://download.influxdata.com/influxdb/releases/influxdb2-2.7.10_linux_amd64.tar.gz.asc" \
+| gpg --verify - influxdb2-2.7.10_linux_amd64.tar.gz \
+2>&1 | grep 'InfluxData Package Signing Key <support@influxdata.com>'
+
+# Extract influx binary
+tar xvzf ./influxdb2-2.7.10_linux_amd64.tar.gz && \
+# copy influx files into user bin
+cp ./influxdb2-2.7.10/usr/bin/influxd /usr/local/bin/ && \
+# remove influx tar file and extracted folder
+rm influxdb2-2.7.10_linux_amd64.tar.gz && \
+rm -r influxdb2-2.7.10
+
+# Install mosquitto mosquitto
+apt install -y mosquitto
+
+# download nvm -> node -> node red
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash && \
+    export NVM_DIR="$HOME/.nvm" && \
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && \
+    nvm install v19.9.0 && \
+    npm install -g --unsafe-perm node-red
+
+
+wget -c https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-english.tar.gz
+
+# install php (phpmyadmin)
+add-apt-repository ppa:ondrej/php
+apt install -y php8.3-fpm php8.3-mysql
+
+# install ngingx
+apt install -y nginx
+
+# install php my admin
+apt update && \
+apt install -y wget unzip && \
+wget https://files.phpmyadmin.net/phpMyAdmin/5.2.0/phpMyAdmin-5.2.0-all-languages.zip && \
+unzip phpMyAdmin-5.2.0-all-languages.zip -d /usr/share/ && \
+mv /usr/share/phpMyAdmin-5.2.0-all-languages /usr/share/phpmyadmin && \
+rm phpMyAdmin-5.2.0-all-languages.zip
+
+# configure php
+touch /usr/share/phpmyadmin/config.inc.php && \
+echo "<?php" >> /usr/share/phpmyadmin/config.inc.php && \
+echo "\$cfg['blowfish_secret'] = 'my_secret_key_12345';" >> /usr/share/phpmyadmin/config.inc.php && \
+echo "\$cfg['Servers'][1]['auth_type'] = 'cookie';" >> /usr/share/phpmyadmin/config.inc.php
+
+# configure nginx to serve php
+RUN touch /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "server {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    listen 80;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    server_name localhost;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    location /phpmyadmin {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "        alias /usr/share/phpmyadmin;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "        index index.php index.html index.htm;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    }" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    location ~ \\.php$ {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "        include snippets/fastcgi-php.conf;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    }" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    location ~ /\\.ht {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "        deny all;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "    }" >> /etc/nginx/sites-available/phpmyadmin.conf && \
+    echo "}" >> /etc/nginx/sites-available/phpmyadmin.conf
+
+# enable php config
+RUN ln -s /etc/nginx/sites-available/phpmyadmin.conf /etc/nginx/sites-enabled/
+
+
+
+# download bonita run
+wget 'https://objects.githubusercontent.com/github-production-release-asset-2e65be/269651251/c4c11c3d-0e7a-4502-8689-8698f2360b42?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=releaseassetproduction%2F20241113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20241113T054102Z&X-Amz-Expires=300&X-Amz-Signature=82c0f82f906e7867b428e0db577c0f2a127090f7266d274e313d147db09fe881&X-Amz-SignedHeaders=host&response-content-disposition=attachment%3B%20filename%3DBonitaStudioCommunity-2023.1-b1-x86_64.run&response-content-type=application%2Foctet-stream'
+# rename file
+mv 'c4c11c3d-0e7a-4502-8689-8698f2360b42?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=releaseassetproduction%2F20241113%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20241113T054102Z&X-Amz-Expires=300&X-Amz-Signature=82c0f82f906e7867b428e' bonita.run
+# give permissions
+chmod +x bonita.run
+chmod +x /opt/BonitaStudioCommunity-2023.1-b1/plugins/org.bonitasoft.studio.console.libs_8.0.0.beta-01/tomcat/server/bin/startup.sh
+chmod +x /opt/BonitaStudioCommunity-2023.1-b1/plugins/org.bonitasoft.studio.console.libs_8.0.0.beta-01/tomcat/server/bin/catalina.sh
+
+# install java
+apt update
+apt install -y openjdk-11-jdk
+
+# add java path
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64

@@ -1,0 +1,62 @@
+# actualizar el sistema de paquetes
+apt update
+
+#configurar zona horaria
+apt install -y tzdata
+ln -fs /usr/share/zoneinfo/America/Bogota /etc/localtime
+dpkg-reconfigure -f noninteractive tzdata
+
+# instalar componentes basicos de linux
+apt install -y wget curl gnupg software-properties-common nano
+
+# instalar mysql
+DEBIAN_FRONTEND=noninteractive apt install -y mysql-server
+service mysql restart
+
+# configurar mysql
+mysql -u root
+CREATE DATABASE focus;
+CREATE USER 'focus'@'%' IDENTIFIED BY 'focus-user2024';
+GRANT ALL PRIVILEGES ON focus.* TO 'focus'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EXIT;
+
+# hacer mysql accesible desde el exterior
+sed -i '0,/bind-address/s/bind-address.*/bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf
+
+# reiniciar mysql para aplicar configuracion
+service mysql restart
+
+# preconfigurar la instalacion de grafana
+wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
+echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main" | tee /etc/apt/sources.list.d/grafana.list
+
+# instalar grafana
+apt update && apt install -y grafana
+# configurar grafana con mysql
+sed -i 's/;type = sqlite3/;type = mysql/' /etc/grafana/grafana.ini
+sed -i 's/;user = root/;user = focus/' /etc/grafana/grafana.ini
+sed -i 's/;password =/;password = focus-user2024/' /etc/grafana/grafana.ini
+sed -i 's/;name = grafana/;name = focus/' /etc/grafana/grafana.ini
+
+# iniciar grafana
+service grafana-server restart
+
+
+# agregar repositorio influx
+
+curl --silent --location -O \
+https://repos.influxdata.com/influxdata-archive.key
+echo "943666881a1b8d9b849b74caebf02d3465d6beb716510d86a39f6c8e8dac7515  influxdata-archive.key" \
+| sha256sum --check - && cat influxdata-archive.key \
+| gpg --dearmor \
+| tee /etc/apt/trusted.gpg.d/influxdata-archive.gpg > /dev/null \
+&& echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' \
+| tee /etc/apt/sources.list.d/influxdata.list
+
+# instalar influx
+apt update && apt install influxdb2
+
+
+
+
