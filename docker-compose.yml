@@ -11,9 +11,9 @@ services:
       - "1883:1883"   # Mosquitto
       - "3001:3000"   # Grafana
       - "3307:3306"   # MySQL
+      - "5901:5901"   # VNCViewer for Pentaho Spoon
       - "8087:8086"   # InfluxDB
     # volumes:
       # - ./grafana:/var/lib/grafana
       # - ./mysql:/var/lib/mysql
       # - ./influxdb:/var/lib/influxdb
-      

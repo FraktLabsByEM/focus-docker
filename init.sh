@@ -30,8 +30,14 @@ node-red &
 # Init apache
 service apache2 start &
 
+# Init pentaho spoon
+/opt/data-integration/spoon.sh &
+
 # Init Grafana
 /usr/sbin/grafana-server --homepath=/usr/share/grafana --config=/etc/grafana/grafana.ini &
+
+# Init VNC
+vncserver :1 -geometry 1920x1080 &
 
 # Keep container alive
 tail -f /dev/null
