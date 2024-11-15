@@ -12,6 +12,7 @@ services:
       - "3001:3000"   # Grafana
       - "3307:3306"   # MySQL
       - "5901:5901"   # VNCViewer for Pentaho Spoon
+      - "8080:8080"   # Bonita
       - "8087:8086"   # InfluxDB
     # volumes:
       # - ./grafana:/var/lib/grafana

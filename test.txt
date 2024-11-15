@@ -1,3 +1,6 @@
+:graf-mysql-influx-nred-mqtt-phpmy-vnc
+
+
 # actualizar el sistema de paquetes
 apt update
 
