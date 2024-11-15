@@ -42,10 +42,9 @@ https://download.influxdata.com/influxdb/releases/influxdb2-2.7.10_linux_amd64.t
 # Extract influx binary
 RUN tar xvzf ./influxdb2-2.7.10_linux_amd64.tar.gz && \
     # copy influx files into user bin
-    cp ./influxdb2-2.7.10/usr/bin/influxd /usr/local/bin/ && \
+    mv ./influxdb2-2.7.10/usr/bin/influxd /usr/local/bin/ && \
     # remove influx tar file and extracted folder
-    rm influxdb2-2.7.10_linux_amd64.tar.gz && \
-    rm -r influxdb2-2.7.10
+    rm influxdb2-2.7.10_linux_amd64.tar.gz
 # Install mosquitto mosquitto
 RUN apt install -y mosquitto
 # Install nvm -> node -> node red
@@ -55,47 +54,46 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | b
     nvm install v19.9.0 && \
     npm install -g --unsafe-perm node-red
 
-# install ngingx
-RUN apt install -y nginx
+# ngnix throws a lot of problems, so its replaced with apache
+# Install Apache
+RUN apt update && \
+    apt install -y apache2 libapache2-mod-php
 
 # install php - php my admin
 RUN add-apt-repository ppa:ondrej/php && \
-    apt install -y php8.3-fpm php8.3-mysql && \
+    apt install -y php8.3 php8.3-mysql && \
     # install php my admin
     wget https://files.phpmyadmin.net/phpMyAdmin/5.2.0/phpMyAdmin-5.2.0-all-languages.zip && \
     unzip phpMyAdmin-5.2.0-all-languages.zip -d /usr/share/ && \
     mv /usr/share/phpMyAdmin-5.2.0-all-languages /usr/share/phpmyadmin && \
     rm phpMyAdmin-5.2.0-all-languages.zip 
 
-# configure php my admin
+# Configure PHPMyAdmin in Apache
+RUN echo "<Directory /usr/share/phpmyadmin>" > /etc/apache2/conf-available/phpmyadmin.conf && \
+    echo "    Options Indexes FollowSymLinks" >> /etc/apache2/conf-available/phpmyadmin.conf && \
+    echo "    AllowOverride All" >> /etc/apache2/conf-available/phpmyadmin.conf && \
+    echo "    Require all granted" >> /etc/apache2/conf-available/phpmyadmin.conf && \
+    echo "</Directory>" >> /etc/apache2/conf-available/phpmyadmin.conf && \
+    ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin && \
+    a2enconf phpmyadmin
+
+# delete php7 -> configure servername
+RUN rm /etc/apache2/mods-enabled/php7.* && \
+    rm /etc/apache2/mods-available/php7.* && \
+    echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+# Create php my admin config file
 RUN touch /usr/share/phpmyadmin/config.inc.php && \
-    echo "<?php" >> /usr/share/phpmyadmin/config.inc.php && \
-    echo "\$cfg['blowfish_secret'] = 'my_secret_key_12345';" >> /usr/share/phpmyadmin/config.inc.php && \
-    echo "\$cfg['Servers'][1]['auth_type'] = 'cookie';" >> /usr/share/phpmyadmin/config.inc.php
-
-# configure nginx to serve php
-RUN touch /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "server {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    listen 80;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    server_name localhost;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    location /phpmyadmin {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "        alias /usr/share/phpmyadmin;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "        index index.php index.html index.htm;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    }" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    location ~ \\.php$ {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "        include snippets/fastcgi-php.conf;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    }" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    location ~ /\\.ht {" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "        deny all;" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "    }" >> /etc/nginx/sites-available/phpmyadmin.conf && \
-    echo "}" >> /etc/nginx/sites-available/phpmyadmin.conf
-
-# enable php config
-RUN ln -s /etc/nginx/sites-available/phpmyadmin.conf /etc/nginx/sites-enabled/
+    echo "<?php" > /usr/share/phpmyadmin/config.inc.php && \
+    # echo "\$cfg['Servers'][1]['host'] = 'localhost';" >> /usr/share/phpmyadmin/config.inc.php && \ NOT WORKING
+    echo "\$cfg['Servers'][1]['host'] = '127.0.0.1';" >> /usr/share/phpmyadmin/config.inc.php && \
+    echo "\$cfg['Servers'][1]['auth_type'] = 'cookie';" >> /usr/share/phpmyadmin/config.inc.php && \
+    echo "\$cfg['blowfish_secret'] = 'focus_by_sanolivar_2024';" >> /usr/share/phpmyadmin/config.inc.php
 
 
-
+# Enable required php modules
+RUN a2enmod php8.3 && a2enmod rewrite
+# curl -I http://localhost:80/phpmyadmin
 EXPOSE 3001 3307 8087 1883 1880 80
 # Iniciar servicios
 ENTRYPOINT ["/init.sh"]

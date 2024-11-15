@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Init MySQL
 service mysql restart
 
@@ -10,10 +9,15 @@ until mysqladmin ping -h "localhost" --silent; do
 done
 echo "MySQL is ready."
 
-# Create MySQL user
-mysql -u root -e "CREATE USER 'focus'@'%' IDENTIFIED BY 'focus-user2024';"
+# Create MySQL user for local and external access
+mysql -u root -e "CREATE USER 'focus'@'localhost' IDENTIFIED WITH mysql_native_password BY 'focus-user2024';"
+mysql -u root -e "CREATE USER 'focus'@'%' IDENTIFIED WITH mysql_native_password BY 'focus-user2024';"
+mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'focus'@'localhost' WITH GRANT OPTION;"
 mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'focus'@'%' WITH GRANT OPTION;"
 mysql -u root -e "FLUSH PRIVILEGES;"
+
+
+service mysql restart
 
 # Init influx
 influxd &
@@ -23,9 +27,8 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # Cargar nvm
 node-red &
 
-# Init PHPMyAdmin and nginx
-service php8.3-fpm start &
-service nginx start &
+# Init apache
+service apache2 start &
 
 # Init Grafana
 /usr/sbin/grafana-server --homepath=/usr/share/grafana --config=/etc/grafana/grafana.ini &
